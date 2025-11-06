@@ -1,8 +1,70 @@
+# name: Deploy website
+# on:
+#   push:
+#     branches:
+#       - main
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Get code
+#         uses: actions/checkout@v3
+#       - name: Install dependencies
+#         run: npm ci
+#       - name: Lint code
+#         run: npm run lint
+#       - name: Test code
+#         run: npm run test
+#   build:
+#     needs: test
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Get code
+#         uses: actions/checkout@v3
+#       - name: Install dependencies
+#         run: npm ci
+#       - name: Build website
+#         run: npm run build
+#       - name: Upload Artifacts
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: dist-files
+#           path: dist
+#           # path: |
+#           #   dist
+#           #   package.json
+#   deploy:
+#     needs: build
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Get build Artifacts
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: dist-files
+#       - name: Show Content
+#         run: ls
+#       - name: Deploy
+#         run: echo "Deploying..."
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 name: Deploy website
 on:
   push:
     branches:
       - main
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,24 +77,47 @@ jobs:
         run: npm run lint
       - name: Test code
         run: npm run test
+
   build:
     needs: test
     runs-on: ubuntu-latest
+    outputs:
+      # expose the step output as a job output
+      index_file: ${{ steps.find-index.outputs.index_file }}
     steps:
       - name: Get code
         uses: actions/checkout@v3
+
       - name: Install dependencies
         run: npm ci
+
       - name: Build website
         run: npm run build
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-files
           path: dist
-          # path: |
-          #   dist
-          #   package.json
+
+      - name: Find index file and set output
+        id: find-index
+        run: |
+          # enable nullglob so a glob that doesn't match returns empty
+          shopt -s nullglob
+          files=(dist/index*.html)
+          if [ ${#files[@]} -gt 0 ]; then
+            # choose the first match (adjust if you expect multiple)
+            fullpath="${files[0]}"
+            basename=$(basename "$fullpath")
+            echo "Found: $fullpath"
+            # set a step output named index_file (use GITHUB_OUTPUT)
+            echo "index_file=$basename" >> "$GITHUB_OUTPUT"
+          else
+            echo "No index*.html found in dist"
+            exit 1
+          fi
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -41,7 +126,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist-files
-      - name: Show Content
-        run: ls
+
+      - name: Show dist contents
+        run: ls -la dist || true
+
+      - name: Echo index filename from build outputs
+        run: |
+          echo "Index filename from build job: ${{ needs.build.outputs.index_file }}"
+          # if you need full path inside this runner:
+          echo "Full path: dist/${{ needs.build.outputs.index_file }}"
+
       - name: Deploy
-        run: echo "Deploying..."
+        run: echo "Deploying using dist/${{ needs.build.outputs.index_file }}..."
