@@ -65,28 +65,58 @@ on:
     branches:
       - main
 
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Get code
         uses: actions/checkout@v3
+      
+      - name: Cache npm dependencies
+        id: cache-npm
+        uses: actions/cache@v4
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
+      
       - name: Install dependencies
         run: npm ci
+      
       - name: Lint code
         run: npm run lint
+      
       - name: Test code
         run: npm run test
+
 
   build:
     needs: test
     runs-on: ubuntu-latest
-    # expose the JS filename as a job output
     outputs:
       asset_js: ${{ steps.find-asset.outputs.asset_js }}
     steps:
       - name: Get code
         uses: actions/checkout@v3
+
+      - name: Cache npm dependencies
+        id: cache-npm
+        uses: actions/cache@v4
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
 
       - name: Install dependencies
         run: npm ci
@@ -97,22 +127,17 @@ jobs:
       - name: Find JS asset in dist/assets and set outputs
         id: find-asset
         run: |
-          # fail fast if dist doesn't exist
           if [ ! -d dist ]; then
             echo "ERROR: dist/ directory not found. Did the build step produce output?"
             exit 1
           fi
 
-          # enable nullglob so a glob that doesn't match expands to empty
           shopt -s nullglob
-          # collect JS files in dist/assets (adjust pattern if your bundler uses nested folders)
           files=(dist/assets/*.js dist/assets/**/*.js)
           if [ ${#files[@]} -gt 0 ]; then
-            # pick the first match (change selection logic if you need a specific one)
             fullpath="${files[0]}"
             basename=$(basename "$fullpath")
             echo "Found JS asset: $fullpath"
-            # set both a step output (basename) and a fullpath env for use inside this job if needed
             echo "asset_js=$basename" >> "$GITHUB_OUTPUT"
             echo "asset_js_fullpath=$fullpath" >> "$GITHUB_OUTPUT"
           else
@@ -125,6 +150,7 @@ jobs:
         with:
           name: dist-files
           path: dist
+
 
   deploy:
     needs: build
@@ -147,7 +173,6 @@ jobs:
           fi
           echo "Asset basename from build: $ASSET_BASENAME"
           echo "Asset (relative path to use in deploy): dist/assets/$ASSET_BASENAME"
-          # if you need absolute path inside the runner:
           echo "Full path on runner: $(pwd)/dist/assets/$ASSET_BASENAME"
 
       - name: Deploy
@@ -155,5 +180,5 @@ jobs:
           ASSET_BASENAME="${{ needs.build.outputs.asset_js }}"
           ASSET_PATH="dist/assets/$ASSET_BASENAME"
           echo "Deploying using JS asset: $ASSET_PATH"
-          # replace the line below with your real deployment command, e.g. upload to CDN or copy to server
           echo "🎯 (Here you would upload or reference $ASSET_PATH)"
+
